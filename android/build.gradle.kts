@@ -1,5 +1,5 @@
 group = "com.nightsoft.voice_command_kit"
-version = "0.1.0"
+version = "1.0.0"
 
 buildscript {
     val kotlinVersion = "2.2.20"

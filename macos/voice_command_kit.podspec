@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'voice_command_kit'
-  s.version          = '0.1.0'
+  s.version          = '1.0.0'
   s.summary          = 'Wake-word detection and voice-command recognition for Flutter on macOS.'
   s.description      = <<-DESC
 Microphone capture plus ONNX Runtime-backed wake-word inference, exposed to

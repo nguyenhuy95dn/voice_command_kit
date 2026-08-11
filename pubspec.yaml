@@ -4,7 +4,7 @@ description: >-
   Configure the models and the phrases to listen for; the package handles audio
   capture, wake-word inference and command recognition on Android, iOS, macOS
   and Windows.
-version: 0.1.0
+version: 1.0.0
 publish_to: 'none'
 
 environment:

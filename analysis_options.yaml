@@ -1,0 +1,23 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    - build/**
+    - .dart_tool/**
+
+linter:
+  rules:
+    prefer_const_constructors: true
+    prefer_const_declarations: true
+    prefer_const_literals_to_create_immutables: true
+    prefer_single_quotes: true
+    avoid_print: true
+    avoid_dynamic_calls: true
+    always_declare_return_types: true
+    always_specify_types: false
+    prefer_typing_uninitialized_variables: true
+    avoid_catching_errors: true
+    avoid_empty_else: true
+    avoid_function_literals_in_foreach_calls: true
+    prefer_for_elements_to_map_fromIterable: true
+    avoid_web_libraries_in_flutter: true

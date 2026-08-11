@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Declared here so a consuming app inherits it by manifest merge: the
+         package cannot capture audio without it, and asking every consumer to
+         remember it is a needless trap. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+</manifest>

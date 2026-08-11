@@ -1,0 +1,37 @@
+name: voice_command_kit
+description: >-
+  On-device wake-word detection and voice-command recognition for Flutter.
+  Configure the models and the phrases to listen for; the package handles audio
+  capture, wake-word inference and command recognition on Android, iOS, macOS
+  and Windows.
+version: 0.1.0
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.8.0 <4.0.0'
+  flutter: '>=3.24.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  ffi: ^2.2.0
+  path_provider: ^2.1.5
+  speech_to_text: ^7.4.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.nightsoft.voice_command_kit
+        pluginClass: VoiceCommandKitPlugin
+      ios:
+        pluginClass: VoiceCommandKitPlugin
+      macos:
+        pluginClass: VoiceCommandKitPlugin
+      windows:
+        pluginClass: VoiceCommandKitPluginCApi

@@ -9,13 +9,15 @@ classifiers.
 
 | Component | Version |
 |---|---|
-| Dart SDK | `>=3.8.0 <4.0.0` (pubspec.yaml) — pubspec.lock currently resolves `>=3.11.0 <4.0.0` |
-| Flutter SDK | `>=3.24.0` (pubspec.yaml) — pubspec.lock currently resolves `>=3.38.4` |
-| Flutter "created with" revision | `00b0c91f06209d9e4a41f71b7a512d6eb3b9c694` (stable channel) — see `.metadata` |
+| Flutter SDK (actually in use) | `3.41.9`, stable channel — matches `.metadata` revision `00b0c91f06` exactly |
+| Dart SDK (actually in use) | `3.11.5` |
+| Flutter SDK constraint | `>=3.24.0` (pubspec.yaml) |
+| Dart SDK constraint | `>=3.8.0 <4.0.0` (pubspec.yaml) |
 | Project type | `plugin` (federated: android/ios/macos/windows) |
 
-> Note: `flutter`/`dart` are not on PATH in this dev shell (`which flutter` → not found).
-> No `.fvmrc` / `.fvm/` pinning in the repo — SDK version is whatever's active locally.
+> Note: plain `flutter`/`dart` are not on PATH in a bare shell — this machine
+> manages SDKs via `fvm` (global default `3.41.9`). No `.fvmrc` is committed to
+> the repo by choice; the README states the plain Flutter/Dart version instead.
 
 ### Android
 - Kotlin: `2.2.20`

@@ -17,6 +17,27 @@ mic ──► native capture ──► 16 kHz mono PCM ──► wake-word engin
                                             onCommand('turn_on')
 ```
 
+## Requirements
+
+- Flutter `3.41.9` (stable channel), Dart `3.11.5` — see [CLAUDE.md](CLAUDE.md)
+  for the full per-platform toolchain (Android/iOS/macOS/Windows).
+
+## Quick start (demo)
+
+The fastest way to see it working is the bundled example app — it wakes on
+**"Hey Sunny"** and recognizes **"turn on"** / **"turn off"** to flip a light
+on screen.
+
+```bash
+cd example
+flutter run            # add -d macos / -d windows as needed
+```
+
+The package ships no models, so the demo needs five ONNX files dropped into
+`example/assets/models/` first — see
+[example/README.md](example/README.md) for the exact file list and where to
+get them.
+
 ## Using it
 
 ```dart

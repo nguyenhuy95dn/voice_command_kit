@@ -26,17 +26,15 @@ mic ──► native capture ──► 16 kHz mono PCM ──► wake-word engin
 
 The fastest way to see it working is the bundled example app — it wakes on
 **"Hey Sunny"** and recognizes **"turn on"** / **"turn off"** to flip a light
-on screen.
+on screen. Its models are bundled, so it runs as-is:
 
 ```bash
 cd example
 flutter run            # add -d macos / -d windows as needed
 ```
 
-The package ships no models, so the demo needs five ONNX files dropped into
-`example/assets/models/` first — see
-[example/README.md](example/README.md) for the exact file list and where to
-get them.
+See [example/README.md](example/README.md) for what's bundled and how to
+swap in your own wake word / commands.
 
 ## Using it
 

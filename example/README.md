@@ -7,8 +7,8 @@ of the app are the integration; the rest is UI.
 
 ## Running it
 
-The package ships no models, so supply four ONNX files under
-`example/assets/models/` before running:
+The package itself ships no models, but this example bundles a pre-trained
+set under `example/assets/models/` so it runs as-is:
 
 | File | What it is |
 |---|---|
@@ -18,10 +18,11 @@ The package ships no models, so supply four ONNX files under
 | `turn_on.onnx`, `turn_off.onnx` | one classifier per command |
 
 The two generic models come from
-[openWakeWord](https://github.com/dscripka/openWakeWord); the classifiers are
-trained per phrase — see `../doc/TRAINING_MODELS.md`. On Android, iOS and
-macOS the command classifiers are optional — speech-to-text matches the
-`phrases` instead — but the wake word always needs a model.
+[openWakeWord](https://github.com/dscripka/openWakeWord); the classifiers were
+trained per phrase with the same toolkit — see `../doc/TRAINING_MODELS.md` to
+train your own for a new wake word or command. On Android, iOS and macOS the
+command classifiers are optional — speech-to-text matches the `phrases`
+instead — but the wake word always needs a model.
 
 ```bash
 flutter run            # add -d windows / -d macos as needed

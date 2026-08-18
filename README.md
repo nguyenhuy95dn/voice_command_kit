@@ -170,9 +170,12 @@ plugin's `register()` calls `voice_wakeword_force_link()` — without a referenc
 the linker would strip the exports. The iOS **simulator** has no ONNX Runtime
 slice and gets a stub that links but reports inference as unavailable.
 
-macOS is the only platform that implements the device-change event channel.
-Others produce `MissingPluginException`, which the Dart side ignores by design,
-so a platform gains the behaviour simply by starting to emit.
+macOS is the only platform that implements the device-change event channel, so
+the Dart side only listens on macOS. A missing platform implementation fails
+the channel's `listen` call via `FlutterError.reportError`, which a stream's
+`onError` cannot catch — so this can't be handled by ignoring the error after
+the fact, only by not listening at all where no plugin answers. A platform
+gains the behaviour by adding its native side and being added to that guard.
 
 `NATIVE.md` documents the C++ core and the macOS capture pitfalls in detail —
 read it before touching either. `doc/ONNX_RUNTIME_IOS_CUSTOM_BUILD.md` covers

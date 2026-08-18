@@ -43,11 +43,19 @@ final class WakeWordAudioChannel {
   /// event arrives, so the payload carries no detail: there is nothing for the
   /// listener to decide beyond starting again.
   ///
-  /// Only the macOS plugin implements this channel today. On platforms that
-  /// don't, the stream errors with `MissingPluginException` — callers should
-  /// ignore that error rather than guarding by platform, so a platform gains
-  /// the behaviour as soon as its plugin starts emitting.
+  /// Only the macOS plugin implements this channel today, so listening is
+  /// guarded to macOS. `EventChannel.receiveBroadcastStream()` sends an
+  /// internal `listen` call to activate the stream; when no plugin answers
+  /// it, Flutter routes that specific failure through `FlutterError.reportError`
+  /// — not this stream's `onError` — so callers cannot catch it by checking
+  /// for `MissingPluginException` the way they can for a normal stream error.
+  /// A platform gains the behaviour by adding its native side *and* being
+  /// added to the check below.
   static Stream<String> deviceEventStream() {
+    if (!Platform.isMacOS) {
+      return const Stream<String>.empty();
+    }
+
     return _deviceEventChannel.receiveBroadcastStream().map(
       (dynamic event) => event as String,
     );

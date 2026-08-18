@@ -94,10 +94,11 @@ final class VoicePipeline implements VoiceRecognizerContext {
     };
 
     // React the moment the microphone we capture from changes, instead of
-    // waiting for the next health-check tick. Not guarded by platform: the
-    // stream simply errors with MissingPluginException where no plugin
-    // implements the channel, so a platform picks this up as soon as its native
-    // side starts emitting, with no change needed here.
+    // waiting for the next health-check tick. deviceEventStream() guards
+    // itself to macOS — the listen-call failure that guard avoids surfaces
+    // via FlutterError.reportError, not this onError, so it could never be
+    // caught here. The MissingPluginException check below stays as
+    // defense-in-depth for any other failure shape.
     _deviceEventSubscription = WakeWordAudioChannel.deviceEventStream().listen(
       (event) {
         _logger.info('VoicePipeline: audio device event', {'event': event});

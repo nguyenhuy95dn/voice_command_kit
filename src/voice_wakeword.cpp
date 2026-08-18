@@ -2,6 +2,10 @@
 
 #include "onnxruntime_c_api.h"
 
+#if defined(__APPLE__)
+#include "coreml_provider_factory.h"
+#endif
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -631,6 +635,18 @@ int wake_word_init(
     g_ort->SetIntraOpNumThreads(g_session_options, 1);
     g_ort->SetInterOpNumThreads(g_session_options, 1);
     g_ort->SetSessionGraphOptimizationLevel(g_session_options, ORT_ENABLE_ALL);
+
+#if defined(__APPLE__)
+    // Offload inference to the ANE/GPU via CoreML where the graph allows it.
+    // COREML_FLAG_USE_NONE lets CoreML pick the best compute unit per node;
+    // any node it can't take stays on the CPU EP, which is always the
+    // implicit fallback — so a failure to attach here must not abort init,
+    // it just means every node runs on CPU as before.
+    check_status(
+        OrtSessionOptionsAppendExecutionProvider_CoreML(g_session_options, COREML_FLAG_USE_NONE),
+        "CoreML EP unavailable, falling back to CPU"
+    );
+#endif
 
     if (!check_status(
             g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &g_memory_info),

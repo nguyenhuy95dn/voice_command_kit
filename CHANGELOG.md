@@ -1,3 +1,12 @@
+## 1.0.1
+
+- Fixed a fatal `MissingPluginException` crash on Android/iOS/Windows: the
+  device-events channel is now only listened to on macOS, the only platform
+  that implements it. Previously, `EventChannel.receiveBroadcastStream()`'s
+  internal `listen` call failed via `FlutterError.reportError` on every other
+  platform — a failure mode a stream's `onError` cannot catch — so it reached
+  crash reporting instead of being silently ignored as intended.
+
 ## 1.0.0
 
 - First stable release. API surface (`VoicePipeline`, `VoicePipelineConfig`,

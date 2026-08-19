@@ -135,6 +135,14 @@ final class WakeWordEngine {
     );
 
     _initialized = true;
+
+    // setActive is only forwarded to native while _initialized is true, so a
+    // call that raced ahead of init (set _active here but had nothing to tell
+    // native yet) would otherwise leave native defaulting to "everything
+    // active" until the next setActive call. Sync once now to close that gap.
+    if (_active.isNotEmpty) {
+      _syncActiveToNative();
+    }
   }
 
   /// Restricts detection to [modelIds]. Ids that are not loaded are ignored, so
@@ -147,10 +155,14 @@ final class WakeWordEngine {
     final wanted = modelIds.toSet();
     _active = _models.where((model) => wanted.contains(model.id)).toList();
     if (_initialized) {
-      WakeWordBindings.setActive([
-        for (final model in _active) _models.indexOf(model),
-      ]);
+      _syncActiveToNative();
     }
+  }
+
+  void _syncActiveToNative() {
+    WakeWordBindings.setActive([
+      for (final model in _active) _models.indexOf(model),
+    ]);
   }
 
   /// Feeds one chunk of 16 kHz mono Int16 PCM.

@@ -6,6 +6,10 @@
 #include "coreml_provider_factory.h"
 #endif
 
+#ifndef VOICE_WAKEWORD_USE_COREML
+#define VOICE_WAKEWORD_USE_COREML 0
+#endif
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -641,12 +645,17 @@ int wake_word_init(
     g_ort->SetInterOpNumThreads(g_session_options, 1);
     g_ort->SetSessionGraphOptimizationLevel(g_session_options, ORT_ENABLE_ALL);
 
-#if defined(__APPLE__)
+#if defined(__APPLE__) && VOICE_WAKEWORD_USE_COREML
     // Offload inference to the ANE/GPU via CoreML where the graph allows it.
     // COREML_FLAG_USE_NONE lets CoreML pick the best compute unit per node;
     // any node it can't take stays on the CPU EP, which is always the
     // implicit fallback — so a failure to attach here must not abort init,
     // it just means every node runs on CPU as before.
+    //
+    // Disabled by default (VOICE_WAKEWORD_USE_COREML defaults to 0, below):
+    // these models are small and called ~12.5x/sec, and on-device testing
+    // showed CoreML dispatch/compile overhead — including synchronous
+    // main-thread compiles — costing more than it saved versus plain CPU EP.
     if (check_status(
             OrtSessionOptionsAppendExecutionProvider_CoreML(g_session_options, COREML_FLAG_USE_NONE),
             "CoreML EP unavailable, falling back to CPU"

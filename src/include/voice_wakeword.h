@@ -30,6 +30,14 @@ VOICE_WAKEWORD_EXPORT int wake_word_process_pcm(
     int max_scores
 );
 
+/// Restricts inference to the classifiers at [indices] (into the load order
+/// from wake_word_init) on the next call to wake_word_process_pcm. Others are
+/// skipped entirely — not just ignored — so this is what actually saves the
+/// CPU cost of running every command classifier while only the wake word is
+/// wanted. Passing every loaded index (or never calling this) runs them all,
+/// same as before this existed.
+VOICE_WAKEWORD_EXPORT void wake_word_set_active(const int* indices, int count);
+
 VOICE_WAKEWORD_EXPORT void wake_word_reset();
 
 VOICE_WAKEWORD_EXPORT void wake_word_close();

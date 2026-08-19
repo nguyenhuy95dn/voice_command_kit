@@ -140,10 +140,17 @@ final class WakeWordEngine {
   /// Restricts detection to [modelIds]. Ids that are not loaded are ignored, so
   /// a caller can pass a superset without checking first.
   ///
-  /// Cheap enough to call between PCM chunks: nothing is loaded or unloaded.
+  /// Cheap enough to call between PCM chunks: nothing is loaded or unloaded —
+  /// but it does tell native to stop running inference for models that
+  /// dropped out, which is where the actual CPU cost was going.
   void setActive(Iterable<String> modelIds) {
     final wanted = modelIds.toSet();
     _active = _models.where((model) => wanted.contains(model.id)).toList();
+    if (_initialized) {
+      WakeWordBindings.setActive([
+        for (final model in _active) _models.indexOf(model),
+      ]);
+    }
   }
 
   /// Feeds one chunk of 16 kHz mono Int16 PCM.

@@ -104,6 +104,24 @@ final class WakeWordBindings {
     }
   }
 
+  /// Restricts native inference to the classifiers at [indices] (into
+  /// [init]'s `classifierModelPaths` order). Classifiers left out are skipped
+  /// entirely on the next [processPcm] call, not just ignored afterward.
+  static void setActive(List<int> indices) {
+    if (indices.isEmpty) {
+      _symbols.setActive(nullptr, 0);
+      return;
+    }
+
+    final ptr = calloc<Int32>(indices.length);
+    try {
+      ptr.asTypedList(indices.length).setAll(0, indices);
+      _symbols.setActive(ptr, indices.length);
+    } finally {
+      calloc.free(ptr);
+    }
+  }
+
   static void reset() => _symbols.reset();
 
   static void close() => _symbols.close();
@@ -138,6 +156,11 @@ final class _WakeWordSymbols {
             Int32 Function(Pointer<Int16>, Int32, Pointer<Float>, Int32),
             int Function(Pointer<Int16>, int, Pointer<Float>, int)
           >('wake_word_process_pcm');
+      setActive = _lib
+          .lookupFunction<
+            Void Function(Pointer<Int32>, Int32),
+            void Function(Pointer<Int32>, int)
+          >('wake_word_set_active');
       reset = _lib.lookupFunction<Void Function(), void Function()>(
         'wake_word_reset',
       );
@@ -168,6 +191,7 @@ final class _WakeWordSymbols {
   )
   init;
   late final int Function(Pointer<Int16>, int, Pointer<Float>, int) processPcm;
+  late final void Function(Pointer<Int32>, int) setActive;
   late final void Function() reset;
   late final void Function() close;
   late final Pointer<Utf8> Function() lastError;

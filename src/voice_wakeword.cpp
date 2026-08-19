@@ -74,6 +74,7 @@ int g_accumulated_samples = 0;
 std::deque<std::array<float, kMelspecFeatureCount>> g_melspectrogram_buffer;
 std::deque<std::array<float, kEmbeddingSize>> g_feature_buffer;
 std::vector<std::deque<float>> g_prediction_buffers;
+std::vector<bool> g_classifier_active;
 
 void set_error(const std::string& message) {
     g_last_error = message;
@@ -130,6 +131,7 @@ void release_all() {
     g_classifier_input_names.clear();
     g_classifier_output_names.clear();
     g_prediction_buffers.clear();
+    g_classifier_active.clear();
     if (g_embedding_session != nullptr) {
         g_ort->ReleaseSession(g_embedding_session);
         g_embedding_session = nullptr;
@@ -565,6 +567,7 @@ bool run_pipeline_once_if_ready(const std::vector<int16_t>& pcm, std::vector<flo
 
     if (prepared_samples > kChunkSamples) {
         for (size_t c = 0; c < g_classifier_sessions.size(); ++c) {
+            if (c < g_classifier_active.size() && !g_classifier_active[c]) continue;
             float max_score = -std::numeric_limits<float>::infinity();
             for (int i = prepared_samples / kChunkSamples - 1; i >= 0; --i) {
                 float candidate = 0.0f;
@@ -580,6 +583,7 @@ bool run_pipeline_once_if_ready(const std::vector<int16_t>& pcm, std::vector<flo
         }
     } else if (prepared_samples == kChunkSamples) {
         for (size_t c = 0; c < g_classifier_sessions.size(); ++c) {
+            if (c < g_classifier_active.size() && !g_classifier_active[c]) continue;
             float score = 0.0f;
             if (!classifier_predict_for_offset(c, 0, &score)) {
                 return false;
@@ -590,6 +594,7 @@ bool run_pipeline_once_if_ready(const std::vector<int16_t>& pcm, std::vector<flo
         }
     } else {
         for (size_t c = 0; c < g_classifier_sessions.size(); ++c) {
+            if (c < g_classifier_active.size() && !g_classifier_active[c]) continue;
             if (!g_prediction_buffers[c].empty()) {
                 float score = g_prediction_buffers[c].back();
                 if (append_prediction(c, score)) {
@@ -670,6 +675,9 @@ int wake_word_init(
     g_classifier_input_names.resize(num_classifiers);
     g_classifier_output_names.resize(num_classifiers);
     g_prediction_buffers.resize(num_classifiers);
+    // All active until the host calls wake_word_set_active — matches the old
+    // behavior for callers that never opt into filtering.
+    g_classifier_active.assign(num_classifiers, true);
 
     for (int i = 0; i < num_classifiers; ++i) {
         if (!create_session(classifier_model_paths[i], &g_classifier_sessions[i])) {
@@ -730,6 +738,17 @@ int wake_word_process_pcm(const short* pcm, int sample_count, float* out_scores,
     return num_written;
 }
 
+void wake_word_set_active(const int* indices, int count) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    std::fill(g_classifier_active.begin(), g_classifier_active.end(), false);
+    for (int i = 0; i < count; ++i) {
+        const int idx = indices[i];
+        if (idx >= 0 && static_cast<size_t>(idx) < g_classifier_active.size()) {
+            g_classifier_active[static_cast<size_t>(idx)] = true;
+        }
+    }
+}
+
 void wake_word_reset() {
     std::lock_guard<std::mutex> lock(g_mutex);
     reset_buffers();
@@ -752,6 +771,7 @@ __attribute__((used))
 static void* const g_forced_symbols[] = {
     (void*)&wake_word_init,
     (void*)&wake_word_process_pcm,
+    (void*)&wake_word_set_active,
     (void*)&wake_word_reset,
     (void*)&wake_word_close,
     (void*)&wake_word_last_error,

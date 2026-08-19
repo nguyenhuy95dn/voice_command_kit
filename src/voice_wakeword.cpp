@@ -647,10 +647,12 @@ int wake_word_init(
     // any node it can't take stays on the CPU EP, which is always the
     // implicit fallback — so a failure to attach here must not abort init,
     // it just means every node runs on CPU as before.
-    check_status(
-        OrtSessionOptionsAppendExecutionProvider_CoreML(g_session_options, COREML_FLAG_USE_NONE),
-        "CoreML EP unavailable, falling back to CPU"
-    );
+    if (check_status(
+            OrtSessionOptionsAppendExecutionProvider_CoreML(g_session_options, COREML_FLAG_USE_NONE),
+            "CoreML EP unavailable, falling back to CPU"
+        )) {
+        LOGE("CoreML execution provider attached for wake-word inference");
+    }
 #endif
 
     if (!check_status(

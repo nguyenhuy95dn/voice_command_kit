@@ -73,6 +73,30 @@ Rosetta translation involved). Run the app on the **native "My Mac"**
 destination, not "My Mac (Rosetta)", to get real wake-word inference while
 developing on Apple Silicon.
 
+## KleidiAI SME kernel crash, running fully native (macOS, Apple Silicon)
+
+A second, unrelated crash with the exact same symptom (`g_ort->Run()` traps
+with `EXC_BAD_INSTRUCTION`) shows up even with no Rosetta involved at all —
+confirmed by the crashing frame itself: `kai_run_lhs_pack_f32p2vlx1_f32_sme`,
+a pure-arm64 KleidiAI GEMM kernel, which cannot appear in a Rosetta-translated
+x86_64 process.
+
+ONNX Runtime's MLAS backend ships a KleidiAI integration that feature-detects
+ARM SME (Scalable Matrix Extension) and dispatches SME-specific kernels for
+float32 matmuls when it believes SME is usable. On this Apple Silicon
+hardware that detection is a false positive: the process has no real usable
+SME execution state, so the first SME kernel call traps — same class of
+"hardware trap, not catchable" problem as the Rosetta case above.
+
+Unlike the Rosetta case, this one isn't "don't do the thing that's already
+broken" — it's a real, documented ONNX Runtime session option:
+`AddSessionConfigEntry(options, kOrtSessionOptionsMlasDisableKleidiAi, "1")`
+(`onnxruntime_session_options_config_keys.h`) forces MLAS back onto its
+non-SME kernels, set once in `wake_word_init` right after the thread-count
+options. A failure to set it is treated as non-fatal (falls through to
+whatever MLAS would have done anyway) rather than aborting init, same as the
+CoreML EP block below it.
+
 ## macOS audio capture: hard-won notes
 
 macOS has no `AVAudioSession`, so `macos/Classes/VoiceCommandKitPlugin.swift` drives

@@ -1,3 +1,13 @@
+## 1.0.3
+
+- Fixed a second, unrelated fatal `EXC_BAD_INSTRUCTION` crash on macOS —
+  this one on genuinely native arm64 (no Rosetta): ONNX Runtime's MLAS
+  KleidiAI backend feature-detects ARM SME as available on Apple Silicon
+  and dispatches an SME GEMM kernel (`kai_run_lhs_pack_f32p2vlx1_f32_sme`)
+  that traps, since the process has no real usable SME execution state.
+  `wake_word_init` now sets the documented `mlas.disable_kleidiai` session
+  option to force MLAS back onto its non-SME kernels.
+
 ## 1.0.2
 
 - Fixed a fatal `EXC_BAD_INSTRUCTION` crash on macOS the first time the wake

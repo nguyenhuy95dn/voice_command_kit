@@ -1,6 +1,7 @@
 #include "include/voice_wakeword.h"
 
 #include "onnxruntime_c_api.h"
+#include "onnxruntime_session_options_config_keys.h"
 
 #if defined(__APPLE__)
 #include "coreml_provider_factory.h"
@@ -679,6 +680,27 @@ int wake_word_init(
     g_ort->SetIntraOpNumThreads(g_session_options, 1);
     g_ort->SetInterOpNumThreads(g_session_options, 1);
     g_ort->SetSessionGraphOptimizationLevel(g_session_options, ORT_ENABLE_ALL);
+
+    // MLAS's KleidiAI backend feature-detects ARM SME and dispatches SME
+    // GEMM kernels (e.g. kai_run_lhs_pack_f32p2vlx1_f32_sme) for float32
+    // matmuls when it believes SME is available. On Apple Silicon that
+    // detection is a false positive — the process does not actually have a
+    // usable SME execution state — so the first such kernel call traps with
+    // EXC_BAD_INSTRUCTION (illegal instruction), a hardware fault nothing
+    // here could catch. This is a real ONNX Runtime session option, not a
+    // guess: it forces MLAS back onto its non-SME (NEON) kernels, which is
+    // exactly the CPU EP behavior this engine already targets via
+    // SetIntraOpNumThreads/SetInterOpNumThreads above. A failure to set it
+    // must not abort init — it only means SME stays enabled, no worse than
+    // before this existed.
+    check_status(
+        g_ort->AddSessionConfigEntry(
+            g_session_options,
+            kOrtSessionOptionsMlasDisableKleidiAi,
+            "1"
+        ),
+        "Failed to disable MLAS KleidiAI SME kernels"
+    );
 
 #if defined(__APPLE__) && VOICE_WAKEWORD_USE_COREML
     // Offload inference to the ANE/GPU via CoreML where the graph allows it.

@@ -1,3 +1,18 @@
+## 1.0.4
+
+- Fixed a fatal `"Failed to create tap due to format mismatch"` crash on
+  macOS: turning a headset off in the narrow window between reading the
+  input format and calling `installTap` left the engine asking for a format
+  that no longer matched the hardware (which had already switched to the
+  built-in mic), and `installTap` throws an uncatchable `NSException` for
+  that. `installTap` is now called with `format: nil`, which makes it adopt
+  the bus's actual format atomically at call time instead of trusting a
+  value read moments earlier — closing the race at its source rather than
+  narrowing it. The `AVAudioConverter` this requires is now built lazily
+  inside the tap closure from local state, never touching `self`, so the
+  earlier use-after-free hazard between the render thread and the main
+  thread (fixed in an earlier version) cannot recur here either.
+
 ## 1.0.3
 
 - Fixed a second, unrelated fatal `EXC_BAD_INSTRUCTION` crash on macOS —

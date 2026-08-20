@@ -52,7 +52,6 @@ public final class VoiceCommandKitPlugin: NSObject, FlutterPlugin, FlutterStream
     private static let defaultInputChangedEvent = "defaultInputChanged"
 
     private var audioEngine = AVAudioEngine()
-    private var audioConverter: AVAudioConverter?
     private var eventSink: FlutterEventSink?
     private var isListening = false
     private let deviceEventStreamHandler = DeviceEventStreamHandler()
@@ -370,28 +369,45 @@ public final class VoiceCommandKitPlugin: NSObject, FlutterPlugin, FlutterStream
             return
         }
 
-        audioConverter = AVAudioConverter(from: inputFormat, to: outputFormat)
-        guard let converter = audioConverter else {
-            completion(NSError(
-                domain: "VoiceCommandKitPlugin",
-                code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to create audio converter."]
-            ))
-            return
-        }
-
         inputNode.removeTap(onBus: 0)
-        // Capture `converter` directly (like `outputFormat` below) rather than
-        // reading the shared `self.audioConverter` property inside the tap
-        // callback. The tap closure runs on a CoreAudio render thread, not the
-        // main thread — `self.audioConverter` gets reassigned/nil'd from the
-        // main thread on every start/stop (now happening rapidly on mic
-        // hot-plug), and a tap invocation already in flight when that happens
-        // was reading a converter the main thread had just deallocated: a
-        // use-after-free (EXC_BAD_ACCESS in objc_msgSend). Capturing the
-        // specific instance keeps it alive for as long as this closure exists,
-        // independent of whatever `self.audioConverter` currently points to.
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
+
+        // Passing `inputFormat` here (read moments ago, above) used to throw
+        // "Failed to create tap due to format mismatch": if the default input
+        // device changes between that read and this call — e.g. a headset is
+        // switched off mid-start, and CoreAudio moves to the built-in mic's
+        // different sample rate — the format installTap is told to expect no
+        // longer matches the format the hardware is actually running, and
+        // installTap throws an uncatchable NSException over the mismatch,
+        // same as the 0-channel case above. Passing `nil` sidesteps the whole
+        // failure class: per Apple's docs, a nil format makes the tap use
+        // whatever the bus's format truly is *at the moment of the call*,
+        // which by definition cannot mismatch itself.
+        //
+        // That means the input format for `AVAudioConverter` is no longer
+        // knowable in advance either. Rather than reading a shared
+        // `self.audioConverter` from the tap closure — a real use-after-free
+        // hazard already hit once (see the git history for this line) because
+        // that property gets reassigned/nil'd from the main thread on every
+        // start/stop — the converter now lives purely as state local to this
+        // closure: only this closure (always the same serial CoreAudio render
+        // thread) ever touches `tapConverter`/`tapConverterFormat`, so there
+        // is nothing for the main thread to race with. It is rebuilt whenever
+        // the incoming buffer's format differs from the one the cached
+        // converter was built for — covering both the first callback and any
+        // later format change mid-stream.
+        var tapConverter: AVAudioConverter?
+        var tapConverterFormat: AVAudioFormat?
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { [weak self] buffer, _ in
+            let bufferFormat = buffer.format
+            if tapConverter == nil ||
+                tapConverterFormat?.sampleRate != bufferFormat.sampleRate ||
+                tapConverterFormat?.channelCount != bufferFormat.channelCount ||
+                tapConverterFormat?.commonFormat != bufferFormat.commonFormat {
+                tapConverter = AVAudioConverter(from: bufferFormat, to: outputFormat)
+                tapConverterFormat = bufferFormat
+            }
+
+            guard let converter = tapConverter else { return }
             self?.processInputBuffer(buffer, converter: converter, outputFormat: outputFormat)
         }
 
@@ -457,7 +473,6 @@ public final class VoiceCommandKitPlugin: NSObject, FlutterPlugin, FlutterStream
             audioEngine.reset()
             lastHardwareChangeAt = Date()
         }
-        audioConverter = nil
         isListening = false
         currentInputDeviceUID = nil
     }

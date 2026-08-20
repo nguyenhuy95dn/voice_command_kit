@@ -125,7 +125,14 @@ the same crashes aren't rediscovered from scratch.
    real fix** — see (3). The shipped code does *not* reorder `prepare()`
    (still called right before `audioEngine.start()`, after `installTap`,
    same as the original) and does *not* touch device sample rates; once (3)
-   was fixed, these crashes stopped happening on their own.
+   was fixed, these crashes stopped happening — for a long time.
+
+   **Incomplete — see (10).** "Stopped happening" turned out to mean
+   "stopped happening for the *no-mic* trigger," not "can't happen." The
+   exact same error message came back under a different trigger: the default
+   input device changing (e.g. a headset switching off) in the narrow window
+   between reading `inputFormat` and calling `installTap`, which (3)'s guard
+   does nothing to close.
 
 3. **No microphone at all (Mac mini, no built-in mic) — the real root
    cause.** All of (2)'s crashes, plus the 0-channel one in (1), turned out
@@ -273,6 +280,43 @@ the same crashes aren't rediscovered from scratch.
    and whether a 3.5 mm jack transition changes the default *device* at all,
    or only that device's data source (in which case it does not fire).
 
+10. **"Format mismatch," for real this time: a device change landing between
+    reading the format and calling `installTap`.** (2) was declared fixed
+    once (3)'s no-mic guard shipped, but the same
+    `"Failed to create tap due to format mismatch"` crash came back —
+    triggered by turning a headset off, not by having no microphone at all.
+    Sequence: `inputFormat = inputNode.outputFormat(forBus: 0)` reads a
+    valid format (say the headset's, 2ch/44.1kHz); before the very next line,
+    `installTap`, actually runs, CoreAudio finishes switching the default
+    input to the built-in mic; `installTap(format: inputFormat)` is now
+    asking for a format that no longer matches what the hardware is actually
+    running, and throws the same uncatchable `NSException` as (1)'s
+    0-channel case. (9)'s 300ms settle window doesn't help — it only guards
+    the time *before* `startEngineIfNeeded` begins, not the handful of
+    statements *inside* it, and a device switch is a real-time hardware
+    event that doesn't wait for Swift to finish a run-loop turn.
+
+    No amount of re-reading the format closer to `installTap` closes this
+    window — it can only ever be shrunk, not eliminated, because the
+    hardware event and the Swift statements are on independent clocks. Fixed
+    structurally instead: `installTap` is now called with `format: nil`.
+    Per Apple's docs a nil format makes the tap adopt the bus's *actual*
+    format at the instant the call executes, atomically, which by
+    construction cannot mismatch itself — there is no longer a format value
+    for a race to go stale.
+
+    That removes the one thing `AVAudioConverter`'s `from:` format used to be
+    read from ahead of time, so the converter moved from being built once on
+    the main thread (then captured into the tap closure per (5)) to being
+    built lazily *inside* the closure, on the first callback and again
+    whenever a later buffer's format changes underneath it. It is **not**
+    stored on `self`: `tapConverter`/`tapConverterFormat` are local variables
+    captured by the closure, touched only by the CoreAudio render thread that
+    invokes it — never by the main thread — so (5)'s use-after-free hazard
+    (a converter reassigned/nil'd on `self` from main while the render thread
+    was still reading it) cannot recur here; there is no shared mutable
+    property left to race over.
+
 ### Current design (end state)
 
 ```
@@ -282,15 +326,16 @@ AVCaptureDevice.default(for: .audio) != nil?  — fail fast, no crash, if not
         ↓
 AVAudioEngine() created fresh (once per start, not per retry attempt)
         ↓
-read inputNode.outputFormat(forBus: 0)
+read inputNode.outputFormat(forBus: 0) — sanity check only, see below
         ↓
 retry (10× / 100ms) if 0-channel/invalid — permission-grant settle window
         ↓
-installTap(format: <real hardware format>, closure captures its own converter)
+installTap(format: nil — adopts the bus's actual format atomically, can't mismatch)
         ↓
 prepare() → start()
         ↓
-AVAudioConverter → 16 kHz mono Int16 → voice_command_kit/pcm event channel
+tap closure builds/rebuilds its own local AVAudioConverter from each
+buffer's real format → 16 kHz mono Int16 → voice_command_kit/pcm event channel
 ```
 
 Plus, the one observer left:

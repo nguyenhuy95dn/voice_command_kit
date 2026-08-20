@@ -13,7 +13,6 @@
 #undef max
 
 #include <flutter/event_channel.h>
-#include <flutter/method_channel.h>
 #include <flutter/encodable_value.h>
 #include <flutter/plugin_registrar_windows.h>
 
@@ -29,16 +28,18 @@
 #include <mmdeviceapi.h>
 #include <wrl/client.h>
 
+#include "messages.g.h"
+
 namespace voice_command_kit {
 
 // Windows microphone capture for the wake word engine.
 //
 // Exposes the same channel contract as the Android, iOS and macOS plugins in
 // this package:
-//   MethodChannel "voice_command_kit/audio": startListening / stopListening /
+//   Pigeon WakeWordAudioHostApi: startListening / stopListening /
 //     isListening / checkOrRequestPermission
 //   EventChannel  "voice_command_kit/pcm": raw mono 16 kHz Int16 PCM chunks
-class VoiceCommandKitPlugin : public flutter::Plugin {
+class VoiceCommandKitPlugin : public flutter::Plugin, public WakeWordAudioHostApi {
  public:
   // Registers the plugin with the engine. The registrar takes ownership, so
   // capture is torn down by the destructor when the engine goes away — there is
@@ -51,13 +52,17 @@ class VoiceCommandKitPlugin : public flutter::Plugin {
   VoiceCommandKitPlugin(const VoiceCommandKitPlugin&) = delete;
   VoiceCommandKitPlugin& operator=(const VoiceCommandKitPlugin&) = delete;
 
- private:
-  void HandleMethodCall(
-      const flutter::MethodCall<flutter::EncodableValue>& call,
-      std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
-
+  // WakeWordAudioHostApi
+  void CheckOrRequestPermission(
+      std::function<void(ErrorOr<bool> reply)> result) override;
   void StartListening(
-      std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
+      std::function<void(std::optional<FlutterError> reply)> result) override;
+  void StopListening(
+      std::function<void(std::optional<FlutterError> reply)> result) override;
+  void IsListening(
+      std::function<void(ErrorOr<bool> reply)> result) override;
+
+ private:
   void StopListeningInternal();
   bool ProbeMicrophoneAccess();
 
@@ -66,8 +71,6 @@ class VoiceCommandKitPlugin : public flutter::Plugin {
 
   void EmitPcm(const int16_t* samples, size_t count);
 
-  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
-      method_channel_;
   std::unique_ptr<flutter::EventChannel<flutter::EncodableValue>>
       event_channel_;
 

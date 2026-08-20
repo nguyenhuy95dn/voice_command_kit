@@ -22,7 +22,6 @@ using Microsoft::WRL::ComPtr;
 
 namespace {
 
-constexpr char kMethodChannelName[] = "voice_command_kit/audio";
 constexpr char kEventChannelName[] = "voice_command_kit/pcm";
 constexpr int kTargetSampleRate = 16000;
 
@@ -78,14 +77,7 @@ void VoiceCommandKitPlugin::RegisterWithRegistrar(
 
 VoiceCommandKitPlugin::VoiceCommandKitPlugin(flutter::BinaryMessenger* messenger)
     : messenger_(messenger) {
-  method_channel_ =
-      std::make_unique<flutter::MethodChannel<EncodableValue>>(
-          messenger, kMethodChannelName,
-          &flutter::StandardMethodCodec::GetInstance());
-  method_channel_->SetMethodCallHandler(
-      [this](const auto& call, auto result) {
-        HandleMethodCall(call, std::move(result));
-      });
+  WakeWordAudioHostApi::SetUp(messenger, this);
 
   event_channel_ = std::make_unique<flutter::EventChannel<EncodableValue>>(
       messenger, kEventChannelName,
@@ -111,26 +103,24 @@ VoiceCommandKitPlugin::VoiceCommandKitPlugin(flutter::BinaryMessenger* messenger
 
 VoiceCommandKitPlugin::~VoiceCommandKitPlugin() {
   StopListeningInternal();
-  method_channel_->SetMethodCallHandler(nullptr);
+  WakeWordAudioHostApi::SetUp(messenger_, nullptr);
   event_channel_->SetStreamHandler(nullptr);
 }
 
-void VoiceCommandKitPlugin::HandleMethodCall(
-    const flutter::MethodCall<EncodableValue>& call,
-    std::unique_ptr<flutter::MethodResult<EncodableValue>> result) {
-  const auto& method = call.method_name();
-  if (method == "startListening") {
-    StartListening(std::move(result));
-  } else if (method == "stopListening") {
-    StopListeningInternal();
-    result->Success();
-  } else if (method == "isListening") {
-    result->Success(EncodableValue(running_.load()));
-  } else if (method == "checkOrRequestPermission") {
-    result->Success(EncodableValue(ProbeMicrophoneAccess()));
-  } else {
-    result->NotImplemented();
-  }
+void VoiceCommandKitPlugin::CheckOrRequestPermission(
+    std::function<void(ErrorOr<bool> reply)> result) {
+  result(ErrorOr<bool>(ProbeMicrophoneAccess()));
+}
+
+void VoiceCommandKitPlugin::IsListening(
+    std::function<void(ErrorOr<bool> reply)> result) {
+  result(ErrorOr<bool>(running_.load()));
+}
+
+void VoiceCommandKitPlugin::StopListening(
+    std::function<void(std::optional<FlutterError> reply)> result) {
+  StopListeningInternal();
+  result(std::nullopt);
 }
 
 bool VoiceCommandKitPlugin::ProbeMicrophoneAccess() {
@@ -176,9 +166,9 @@ bool VoiceCommandKitPlugin::ProbeMicrophoneAccess() {
 }
 
 void VoiceCommandKitPlugin::StartListening(
-    std::unique_ptr<flutter::MethodResult<EncodableValue>> result) {
+    std::function<void(std::optional<FlutterError> reply)> result) {
   if (running_.load()) {
-    result->Success();
+    result(std::nullopt);
     return;
   }
 
@@ -204,8 +194,8 @@ void VoiceCommandKitPlugin::StartListening(
     if (capture_thread_.joinable()) {
       capture_thread_.join();
     }
-    result->Error("AUDIO_CAPTURE_TIMEOUT",
-                   "Timed out starting microphone capture");
+    result(FlutterError("AUDIO_CAPTURE_TIMEOUT",
+                         "Timed out starting microphone capture"));
     return;
   }
 
@@ -215,11 +205,11 @@ void VoiceCommandKitPlugin::StartListening(
     if (capture_thread_.joinable()) {
       capture_thread_.join();
     }
-    result->Error("AUDIO_CAPTURE_INIT", message);
+    result(FlutterError("AUDIO_CAPTURE_INIT", message));
     return;
   }
 
-  result->Success();
+  result(std::nullopt);
 }
 
 void VoiceCommandKitPlugin::StopListeningInternal() {

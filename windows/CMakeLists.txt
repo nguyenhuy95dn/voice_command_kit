@@ -20,6 +20,8 @@ set(PLUGIN_NAME "voice_command_kit_plugin")
 list(APPEND PLUGIN_SOURCES
   "voice_command_kit_plugin.cpp"
   "voice_command_kit_plugin.h"
+  "messages.g.cpp"
+  "messages.g.h"
 )
 
 # Define the plugin library target. Its name must not be changed (see comment

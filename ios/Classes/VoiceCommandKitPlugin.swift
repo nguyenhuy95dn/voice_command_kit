@@ -11,8 +11,14 @@ import Foundation
 @_silgen_name("voice_wakeword_force_link")
 func voice_wakeword_force_link()
 
-public final class VoiceCommandKitPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
-    private static let methodChannelName = "voice_command_kit/audio"
+// `FlutterError` is a plain Objective-C `NSObject` subclass, not `NSError`,
+// so Swift does not bridge it to `Error` automatically — required to hand one
+// to the `Result<_, Error>` completions the generated Pigeon protocol below
+// expects, the same way the raw-channel code below already constructs and
+// throws these.
+extension FlutterError: Error {}
+
+public final class VoiceCommandKitPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, WakeWordAudioHostApi {
     private static let eventChannelName = "voice_command_kit/pcm"
     private static let targetSampleRate = 16_000.0
 
@@ -26,35 +32,49 @@ public final class VoiceCommandKitPlugin: NSObject, FlutterPlugin, FlutterStream
         voice_wakeword_force_link()
 
         let instance = VoiceCommandKitPlugin()
-        let methodChannel = FlutterMethodChannel(
-            name: methodChannelName,
-            binaryMessenger: registrar.messenger()
-        )
         let eventChannel = FlutterEventChannel(
             name: eventChannelName,
             binaryMessenger: registrar.messenger()
         )
 
-        registrar.addMethodCallDelegate(instance, channel: methodChannel)
+        WakeWordAudioHostApiSetup.setUp(binaryMessenger: registrar.messenger(), api: instance)
         eventChannel.setStreamHandler(instance)
     }
 
-    public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
-        switch call.method {
-        case "checkOrRequestPermission":
-            requestMicrophonePermission { error in
-                result(error == nil)
-            }
-        case "startListening":
-            startListening(result: result)
-        case "stopListening":
-            stopListening()
-            result(nil)
-        case "isListening":
-            result(isListening)
-        default:
-            result(FlutterMethodNotImplemented)
+    public func checkOrRequestPermission(completion: @escaping (Result<Bool, Error>) -> Void) {
+        requestMicrophonePermission { error in
+            completion(.success(error == nil))
         }
+    }
+
+    public func startListening(completion: @escaping (Result<Void, Error>) -> Void) {
+        requestMicrophonePermission { [weak self] permissionError in
+            guard let self else { return }
+            if let permissionError {
+                completion(.failure(permissionError))
+                return
+            }
+
+            do {
+                try self.startEngineIfNeeded()
+                completion(.success(()))
+            } catch {
+                completion(.failure(FlutterError(
+                    code: "VOICE_AUDIO_START_FAILED",
+                    message: error.localizedDescription,
+                    details: nil
+                )))
+            }
+        }
+    }
+
+    public func stopListening(completion: @escaping (Result<Void, Error>) -> Void) {
+        stopListening()
+        completion(.success(()))
+    }
+
+    public func isListening(completion: @escaping (Result<Bool, Error>) -> Void) {
+        completion(.success(isListening))
     }
 
     public func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
@@ -66,27 +86,6 @@ public final class VoiceCommandKitPlugin: NSObject, FlutterPlugin, FlutterStream
         eventSink = nil
         stopListening()
         return nil
-    }
-
-    private func startListening(result: @escaping FlutterResult) {
-        requestMicrophonePermission { [weak self] permissionError in
-            guard let self else { return }
-            if let permissionError {
-                result(permissionError)
-                return
-            }
-
-            do {
-                try self.startEngineIfNeeded()
-                result(nil)
-            } catch {
-                result(FlutterError(
-                    code: "VOICE_AUDIO_START_FAILED",
-                    message: error.localizedDescription,
-                    details: nil
-                ))
-            }
-        }
     }
 
     private func requestMicrophonePermission(completion: @escaping (FlutterError?) -> Void) {

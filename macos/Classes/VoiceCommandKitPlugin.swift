@@ -9,6 +9,13 @@ import Foundation
 @_silgen_name("voice_wakeword_force_link")
 func voice_wakeword_force_link()
 
+// `FlutterError` is a plain Objective-C `NSObject` subclass, not `NSError`,
+// so Swift does not bridge it to `Error` automatically — required to hand one
+// to the `Result<_, Error>` completions the generated Pigeon protocol below
+// expects, the same way the raw-channel code below already constructs and
+// throws these.
+extension FlutterError: Error {}
+
 /// Minimal `FlutterStreamHandler` for the device event channel.
 /// Kept separate from `VoiceCommandKitPlugin` because a single instance set as
 /// the stream handler for two different `FlutterEventChannel`s can't tell
@@ -41,8 +48,7 @@ private final class DeviceEventStreamHandler: NSObject, FlutterStreamHandler {
 /// channel, streaming 16 kHz mono Int16 PCM to Dart. macOS has no
 /// `AVAudioSession`, so we drive `AVAudioEngine` directly and gate the
 /// microphone through `AVCaptureDevice` authorization instead.
-public final class VoiceCommandKitPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
-    private static let methodChannelName = "voice_command_kit/audio"
+public final class VoiceCommandKitPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, WakeWordAudioHostApi {
     private static let eventChannelName = "voice_command_kit/pcm"
     private static let deviceEventChannelName = "voice_command_kit/device_events"
     private static let targetSampleRate = 16_000.0
@@ -65,10 +71,6 @@ public final class VoiceCommandKitPlugin: NSObject, FlutterPlugin, FlutterStream
         voice_wakeword_force_link()
 
         let instance = VoiceCommandKitPlugin()
-        let methodChannel = FlutterMethodChannel(
-            name: methodChannelName,
-            binaryMessenger: registrar.messenger
-        )
         let eventChannel = FlutterEventChannel(
             name: eventChannelName,
             binaryMessenger: registrar.messenger
@@ -78,7 +80,7 @@ public final class VoiceCommandKitPlugin: NSObject, FlutterPlugin, FlutterStream
             binaryMessenger: registrar.messenger
         )
 
-        registrar.addMethodCallDelegate(instance, channel: methodChannel)
+        WakeWordAudioHostApiSetup.setUp(binaryMessenger: registrar.messenger, api: instance)
         eventChannel.setStreamHandler(instance)
         deviceEventChannel.setStreamHandler(instance.deviceEventStreamHandler)
         instance.startObservingDefaultInputDevice()
@@ -180,22 +182,41 @@ public final class VoiceCommandKitPlugin: NSObject, FlutterPlugin, FlutterStream
         deviceEventStreamHandler.send(Self.defaultInputChangedEvent)
     }
 
-    public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
-        switch call.method {
-        case "checkOrRequestPermission":
-            requestMicrophonePermission { error in
-                result(error == nil)
-            }
-        case "startListening":
-            startListening(result: result)
-        case "stopListening":
-            stopListening()
-            result(nil)
-        case "isListening":
-            result(isListening)
-        default:
-            result(FlutterMethodNotImplemented)
+    public func checkOrRequestPermission(completion: @escaping (Result<Bool, Error>) -> Void) {
+        requestMicrophonePermission { error in
+            completion(.success(error == nil))
         }
+    }
+
+    public func startListening(completion: @escaping (Result<Void, Error>) -> Void) {
+        requestMicrophonePermission { [weak self] permissionError in
+            guard let self else { return }
+            if let permissionError {
+                completion(.failure(permissionError))
+                return
+            }
+
+            self.startEngineIfNeeded(attemptsLeft: Self.maxInputFormatAttempts) { error in
+                if let error {
+                    completion(.failure(FlutterError(
+                        code: "VOICE_AUDIO_START_FAILED",
+                        message: error.localizedDescription,
+                        details: nil
+                    )))
+                } else {
+                    completion(.success(()))
+                }
+            }
+        }
+    }
+
+    public func stopListening(completion: @escaping (Result<Void, Error>) -> Void) {
+        stopListening()
+        completion(.success(()))
+    }
+
+    public func isListening(completion: @escaping (Result<Bool, Error>) -> Void) {
+        completion(.success(isListening))
     }
 
     public func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
@@ -207,28 +228,6 @@ public final class VoiceCommandKitPlugin: NSObject, FlutterPlugin, FlutterStream
         eventSink = nil
         stopListening()
         return nil
-    }
-
-    private func startListening(result: @escaping FlutterResult) {
-        requestMicrophonePermission { [weak self] permissionError in
-            guard let self else { return }
-            if let permissionError {
-                result(permissionError)
-                return
-            }
-
-            self.startEngineIfNeeded(attemptsLeft: Self.maxInputFormatAttempts) { error in
-                if let error {
-                    result(FlutterError(
-                        code: "VOICE_AUDIO_START_FAILED",
-                        message: error.localizedDescription,
-                        details: nil
-                    ))
-                } else {
-                    result(nil)
-                }
-            }
-        }
     }
 
     private func requestMicrophonePermission(completion: @escaping (FlutterError?) -> Void) {

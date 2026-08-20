@@ -1,3 +1,13 @@
+## 1.1.0
+
+- Migrated the `voice_command_kit/audio` `MethodChannel` (`checkOrRequestPermission`
+  / `startListening` / `stopListening` / `isListening`) to a generated Pigeon
+  `HostApi` on every platform, replacing the hand-written method-call switch
+  in each native plugin. The `pcm` and `device_events` `EventChannel`s are
+  unchanged — Pigeon's typed-streaming generator doesn't target Windows'
+  C++ plugin, so this package keeps those hand-written to stay identical
+  across platforms. The public `WakeWordAudioChannel` Dart API is unchanged.
+
 ## 1.0.4
 
 - Fixed a fatal `"Failed to create tap due to format mismatch"` crash on

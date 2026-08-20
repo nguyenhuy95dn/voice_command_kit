@@ -37,9 +37,15 @@ CocoaPods only sees files inside its own pod directory.
 
 Every platform's audio-capture plugin exposes the **same** Flutter channel
 contract, consumed uniformly by `wake_word_audio_channel.dart`:
-- Method channel `voice_command_kit/audio`: `checkOrRequestPermission` /
-  `startListening` / `stopListening` / `isListening`.
+- `WakeWordAudioHostApi` (Pigeon `HostApi`, defined in `pigeons/messages.dart`):
+  `checkOrRequestPermission` / `startListening` / `stopListening` /
+  `isListening`. Regenerate the per-platform glue with
+  `tool/generate_pigeons.sh` after editing the schema — do not hand-edit any
+  `*.g.dart` / `*.g.kt` / `*.g.swift` / `*.g.h` / `*.g.cpp` file.
 - Event channel `voice_command_kit/pcm`: raw mono 16 kHz Int16 PCM chunks.
+  Kept as a hand-written `EventChannel` rather than Pigeon's typed streaming
+  (`@EventChannelApi`) because that generator doesn't target C++, and this
+  package needs an identical contract on Windows too.
 - Event channel `voice_command_kit/device_events`: the string
   `"defaultInputChanged"`, emitted when the microphone being captured from
   changes. **Implemented on macOS only so far** — the Dart side ignores the

@@ -16,12 +16,9 @@ import io.flutter.embedding.engine.plugins.FlutterPlugin.FlutterPluginBinding
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.EventChannel
-import io.flutter.plugin.common.MethodCall
-import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.PluginRegistry
 import kotlin.math.max
 
-private const val METHOD_CHANNEL = "voice_command_kit/audio"
 private const val PCM_EVENT_CHANNEL = "voice_command_kit/pcm"
 private const val SAMPLE_RATE = 16000
 private const val FRAME_SAMPLES = 1280
@@ -37,19 +34,18 @@ private const val RECORD_AUDIO_REQUEST_CODE = 6401
  */
 class VoiceCommandKitPlugin :
     FlutterPlugin,
-    MethodChannel.MethodCallHandler,
+    WakeWordAudioHostApi,
     EventChannel.StreamHandler,
     ActivityAware,
     PluginRegistry.RequestPermissionsResultListener {
 
     private var appContext: Context? = null
     private var activity: Activity? = null
-    private var methodChannel: MethodChannel? = null
     private var eventChannel: EventChannel? = null
     private var eventSink: EventChannel.EventSink? = null
     private var audioRecord: AudioRecord? = null
     private var recordingThread: Thread? = null
-    private var pendingPermissionResult: MethodChannel.Result? = null
+    private var pendingPermissionCallback: ((Result<Boolean>) -> Unit)? = null
 
     @Volatile
     private var isRecording = false
@@ -57,23 +53,9 @@ class VoiceCommandKitPlugin :
 
     override fun onAttachedToEngine(binding: FlutterPluginBinding) {
         appContext = binding.applicationContext
-        methodChannel = MethodChannel(binding.binaryMessenger, METHOD_CHANNEL)
-        methodChannel?.setMethodCallHandler(this)
+        WakeWordAudioHostApi.setUp(binding.binaryMessenger, this)
         eventChannel = EventChannel(binding.binaryMessenger, PCM_EVENT_CHANNEL)
         eventChannel?.setStreamHandler(this)
-    }
-
-    override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
-        when (call.method) {
-            "checkOrRequestPermission" -> checkOrRequestPermission(result)
-            "startListening" -> startListening(result)
-            "stopListening" -> {
-                stopListeningInternal()
-                result.success(null)
-            }
-            "isListening" -> result.success(isRecording)
-            else -> result.notImplemented()
-        }
     }
 
     /**
@@ -82,16 +64,19 @@ class VoiceCommandKitPlugin :
      * answered yet. Keeping this in the package means a consumer does not need a
      * permission plugin of its own just to use the wake word.
      */
-    private fun checkOrRequestPermission(result: MethodChannel.Result) {
+    override fun checkOrRequestPermission(callback: (Result<Boolean>) -> Unit) {
         val context = appContext
-            ?: return result.error("CONTEXT_NOT_AVAILABLE", "Application context is not available", null)
+        if (context == null) {
+            callback(Result.failure(FlutterError("CONTEXT_NOT_AVAILABLE", "Application context is not available")))
+            return
+        }
 
         val granted = ContextCompat.checkSelfPermission(
             context,
             Manifest.permission.RECORD_AUDIO
         ) == PackageManager.PERMISSION_GRANTED
         if (granted) {
-            result.success(true)
+            callback(Result.success(true))
             return
         }
 
@@ -100,19 +85,19 @@ class VoiceCommandKitPlugin :
             // No activity to host the system dialog (e.g. asked from a
             // background isolate). Report the current state rather than
             // stranding the caller's future.
-            result.success(false)
+            callback(Result.success(false))
             return
         }
 
         // A second request while one is in flight would strand the first
         // result; the caller is told to wait for the answer it already has
         // coming.
-        if (pendingPermissionResult != null) {
-            result.success(false)
+        if (pendingPermissionCallback != null) {
+            callback(Result.success(false))
             return
         }
 
-        pendingPermissionResult = result
+        pendingPermissionCallback = callback
         ActivityCompat.requestPermissions(
             act,
             arrayOf(Manifest.permission.RECORD_AUDIO),
@@ -127,20 +112,25 @@ class VoiceCommandKitPlugin :
     ): Boolean {
         if (requestCode != RECORD_AUDIO_REQUEST_CODE) return false
 
-        val pending = pendingPermissionResult ?: return true
-        pendingPermissionResult = null
-        pending.success(
-            grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+        val pending = pendingPermissionCallback ?: return true
+        pendingPermissionCallback = null
+        pending(
+            Result.success(
+                grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+            )
         )
         return true
     }
 
-    private fun startListening(result: MethodChannel.Result) {
+    override fun startListening(callback: (Result<Unit>) -> Unit) {
         val context = appContext
-            ?: return result.error("CONTEXT_NOT_AVAILABLE", "Application context is not available", null)
+        if (context == null) {
+            callback(Result.failure(FlutterError("CONTEXT_NOT_AVAILABLE", "Application context is not available")))
+            return
+        }
 
         if (isRecording) {
-            result.success(null)
+            callback(Result.success(Unit))
             return
         }
 
@@ -149,7 +139,7 @@ class VoiceCommandKitPlugin :
             Manifest.permission.RECORD_AUDIO
         ) == PackageManager.PERMISSION_GRANTED
         if (!permissionGranted) {
-            result.error("RECORD_AUDIO_DENIED", "Microphone permission is not granted", null)
+            callback(Result.failure(FlutterError("RECORD_AUDIO_DENIED", "Microphone permission is not granted")))
             return
         }
 
@@ -159,7 +149,7 @@ class VoiceCommandKitPlugin :
             AudioFormat.ENCODING_PCM_16BIT
         )
         if (minBufferSize <= 0) {
-            result.error("AUDIO_RECORD_CONFIG", "Invalid AudioRecord buffer size: $minBufferSize", null)
+            callback(Result.failure(FlutterError("AUDIO_RECORD_CONFIG", "Invalid AudioRecord buffer size: $minBufferSize")))
             return
         }
 
@@ -174,7 +164,7 @@ class VoiceCommandKitPlugin :
 
         if (recorder.state != AudioRecord.STATE_INITIALIZED) {
             recorder.release()
-            result.error("AUDIO_RECORD_INIT", "AudioRecord failed to initialize", null)
+            callback(Result.failure(FlutterError("AUDIO_RECORD_INIT", "AudioRecord failed to initialize")))
             return
         }
 
@@ -185,7 +175,16 @@ class VoiceCommandKitPlugin :
             { readLoop(recorder) },
             "VoiceCommandKitAudioThread"
         ).also { it.start() }
-        result.success(null)
+        callback(Result.success(Unit))
+    }
+
+    override fun stopListening(callback: (Result<Unit>) -> Unit) {
+        stopListeningInternal()
+        callback(Result.success(Unit))
+    }
+
+    override fun isListening(callback: (Result<Boolean>) -> Unit) {
+        callback(Result.success(isRecording))
     }
 
     private fun readLoop(recorder: AudioRecord) {
@@ -236,9 +235,8 @@ class VoiceCommandKitPlugin :
 
     override fun onDetachedFromEngine(binding: FlutterPluginBinding) {
         stopListeningInternal()
-        methodChannel?.setMethodCallHandler(null)
+        WakeWordAudioHostApi.setUp(binding.binaryMessenger, null)
         eventChannel?.setStreamHandler(null)
-        methodChannel = null
         eventChannel = null
         eventSink = null
         appContext = null

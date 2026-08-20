@@ -1,3 +1,15 @@
+## 1.0.2
+
+- Fixed a fatal `EXC_BAD_INSTRUCTION` crash on macOS the first time the wake
+  word engine ran inference while the app was running under Rosetta 2
+  translation (e.g. Xcode's "My Mac (Rosetta)" run destination on Apple
+  Silicon): the x86_64 slice of `onnxruntime.framework` uses AVX2/FMA
+  instructions Rosetta does not reliably translate. `wake_word_init` now
+  detects translation via `sysctlbyname` and fails cleanly before touching
+  ONNX Runtime, the same as every other init-failure guard — voice control
+  just doesn't start instead of crashing the process. Native Apple Silicon
+  (no Rosetta) is unaffected.
+
 ## 1.0.1
 
 - Fixed a fatal `MissingPluginException` crash on Android/iOS/Windows: the

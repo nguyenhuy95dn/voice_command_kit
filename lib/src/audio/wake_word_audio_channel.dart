@@ -3,14 +3,20 @@ import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 
+import 'messages.g.dart';
+
 /// The Dart half of the platform audio contract every plugin in this package
 /// implements identically.
+///
+/// The request/response calls (permission, start/stop/isListening) go over a
+/// generated Pigeon [WakeWordAudioHostApi]. The PCM and device-event streams
+/// stay hand-written [EventChannel]s — Pigeon's typed-streaming generator
+/// does not target C++, and this package needs an identical contract on
+/// Windows too.
 final class WakeWordAudioChannel {
   WakeWordAudioChannel._();
 
-  static const MethodChannel _methodChannel = MethodChannel(
-    'voice_command_kit/audio',
-  );
+  static final WakeWordAudioHostApi _hostApi = WakeWordAudioHostApi();
   static const EventChannel _pcmChannel = EventChannel('voice_command_kit/pcm');
   static const EventChannel _deviceEventChannel = EventChannel(
     'voice_command_kit/device_events',
@@ -65,27 +71,23 @@ final class WakeWordAudioChannel {
   /// question has not been answered yet.
   static Future<bool> requestPermission() async {
     if (!isSupported) return false;
-    final result = await _methodChannel.invokeMethod<bool>(
-      'checkOrRequestPermission',
-    );
-    return result ?? false;
+    return _hostApi.checkOrRequestPermission();
   }
 
   static Future<void> startListening() async {
     if (!isSupported) return;
-    await _methodChannel.invokeMethod<void>('startListening');
+    await _hostApi.startListening();
   }
 
   static Future<void> stopListening() async {
     if (!isSupported) return;
-    await _methodChannel.invokeMethod<void>('stopListening');
+    await _hostApi.stopListening();
   }
 
   static Future<bool> isListening() async {
     if (!isSupported) return false;
     try {
-      final result = await _methodChannel.invokeMethod<bool>('isListening');
-      return result ?? false;
+      return await _hostApi.isListening();
     } catch (_) {
       return false;
     }

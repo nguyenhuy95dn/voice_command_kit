@@ -47,6 +47,32 @@ contract, consumed uniformly by `wake_word_audio_channel.dart`:
   this up simply by starting to emit, with no Dart change. See below for what
   the event means and why the payload carries no detail.
 
+## Rosetta translation crashes the ONNX engine (macOS)
+
+`macos/Frameworks/onnxruntime.framework` is a fat `x86_64`/`arm64` static
+archive; the linker picks whichever slice matches the app's build
+architecture. If the app ends up running the `x86_64` slice under Rosetta 2
+on Apple Silicon — most commonly by selecting Xcode's **"My Mac (Rosetta)"**
+run destination, but also possible for a genuinely Intel-only build —
+`g_ort->Run()` traps with `EXC_BAD_INSTRUCTION` (illegal instruction, i.e.
+`SIGILL`) the first time it actually runs inference: Rosetta does not
+reliably translate the AVX2/FMA instructions onnxruntime's CPU kernels use.
+This is a hardware trap, not a C++ exception or an `OrtStatus` — nothing in
+`voice_wakeword.cpp` could catch it after the fact.
+
+`wake_word_init` now checks `sysctlbyname("sysctl.proc_translated", ...)`
+*before* touching ONNX Runtime at all and fails cleanly (`return 0` +
+`set_error`, same contract as every other init failure) instead of letting
+the first inference crash the process. On the Dart side this surfaces as an
+ordinary `wake_word_init failed` `StateError` from `WakeWordBindings.init`,
+already handled by `WakeWordListener._startInternal`'s catch block exactly
+like a missing model file — voice control just doesn't start, no crash.
+
+Real end users on real Apple Silicon Macs never hit this (there is no
+Rosetta translation involved). Run the app on the **native "My Mac"**
+destination, not "My Mac (Rosetta)", to get real wake-word inference while
+developing on Apple Silicon.
+
 ## macOS audio capture: hard-won notes
 
 macOS has no `AVAudioSession`, so `macos/Classes/VoiceCommandKitPlugin.swift` drives

@@ -38,6 +38,10 @@
 #include <windows.h>
 #endif
 
+#if defined(__APPLE__)
+#include <sys/sysctl.h>
+#endif
+
 namespace {
 
 constexpr int kSampleRate = 16000;
@@ -84,6 +88,26 @@ void set_error(const std::string& message) {
     g_last_error = message;
     LOGE("%s", message.c_str());
 }
+
+#if defined(__APPLE__)
+// Rosetta 2 translates the x86_64 slice of onnxruntime, but does not
+// reliably translate the AVX2/FMA instructions its inference kernels use —
+// g_ort->Run() then traps with an illegal-instruction fault (SIGILL /
+// EXC_BAD_INSTRUCTION), which is a hardware trap, not a C++ exception, so
+// nothing here could catch it. The only safe fix is to never call into the
+// engine while translated. Real Apple Silicon Macs never hit this: it only
+// happens when Rosetta translation was explicitly selected (e.g. Xcode's
+// "My Mac (Rosetta)" run destination), or the app itself ships as an
+// Intel-only binary and macOS launches it translated.
+bool is_running_under_rosetta() {
+    int is_translated = 0;
+    size_t size = sizeof(is_translated);
+    if (sysctlbyname("sysctl.proc_translated", &is_translated, &size, nullptr, 0) != 0) {
+        return false;
+    }
+    return is_translated == 1;
+}
+#endif
 
 bool check_status(OrtStatus* status, const char* context) {
     if (status == nullptr) {
@@ -624,6 +648,17 @@ int wake_word_init(
     std::lock_guard<std::mutex> lock(g_mutex);
     release_all();
     g_last_error.clear();
+
+#if defined(__APPLE__)
+    if (is_running_under_rosetta()) {
+        set_error(
+            "Wake word engine is unavailable while running under Rosetta "
+            "translation (onnxruntime's AVX2 kernels are not reliably "
+            "translated and crash the process). Run natively instead."
+        );
+        return 0;
+    }
+#endif
 
     g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
     if (g_ort == nullptr) {

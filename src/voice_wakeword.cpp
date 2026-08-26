@@ -622,15 +622,8 @@ bool run_pipeline_once_if_ready(const std::vector<int16_t>& pcm, std::vector<flo
             }
         }
     } else {
-        for (size_t c = 0; c < g_classifier_sessions.size(); ++c) {
-            if (c < g_classifier_active.size() && !g_classifier_active[c]) continue;
-            if (!g_prediction_buffers[c].empty()) {
-                float score = g_prediction_buffers[c].back();
-                if (append_prediction(c, score)) {
-                    (*out_scores)[c] = score;
-                }
-            }
-        }
+        // Not enough samples accumulated yet (< kChunkSamples); no new inference window.
+        // out_scores remains all 0.0f as initialized above.
     }
 
     return true;
@@ -813,6 +806,9 @@ void wake_word_set_active(const int* indices, int count) {
         const int idx = indices[i];
         if (idx >= 0 && static_cast<size_t>(idx) < g_classifier_active.size()) {
             g_classifier_active[static_cast<size_t>(idx)] = true;
+            if (static_cast<size_t>(idx) < g_prediction_buffers.size()) {
+                g_prediction_buffers[static_cast<size_t>(idx)].clear();
+            }
         }
     }
 }

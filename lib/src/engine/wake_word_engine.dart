@@ -172,16 +172,18 @@ final class WakeWordEngine {
   WakeWordDetection? processPcm(Int16List pcm) {
     if (!_initialized || _active.isEmpty) return null;
 
+    // Scores come back for every loaded model, indexed by load order.
+    // Audio PCM is always fed to native code so the feature ring buffers
+    // continuously advance with real-time audio even during cooldown.
+    final scores = WakeWordBindings.processPcm(pcm, _models.length);
+    if (scores.isEmpty) {
+      throw StateError('Wake word native error: ${WakeWordBindings.lastError()}');
+    }
+
     final now = DateTime.now();
     final lastDetectedAt = _lastDetectedAt;
     if (lastDetectedAt != null && now.difference(lastDetectedAt) < cooldown) {
       return null;
-    }
-
-    // Scores come back for every loaded model, indexed by load order.
-    final scores = WakeWordBindings.processPcm(pcm, _models.length);
-    if (scores.isEmpty) {
-      throw StateError('Wake word native error: ${WakeWordBindings.lastError()}');
     }
 
     WakeWordModel? best;

@@ -337,10 +337,11 @@ final class VoicePipeline implements VoiceRecognizerContext {
   Future<void> resumeBackgroundListener() async {
     if (_disposed || !_allowResume) return;
 
-    // iOS needs a short settle delay after releasing the microphone (e.g. from
-    // speech-to-text) before the audio session can be re-acquired reliably.
-    if (Platform.isIOS) {
-      await Future<void>.delayed(const Duration(milliseconds: 800));
+    // Apple platforms (iOS & macOS) need a short settle delay after releasing
+    // the microphone (e.g. from speech-to-text) before the audio session /
+    // engine can be re-acquired reliably.
+    if (Platform.isIOS || Platform.isMacOS) {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
     }
 
     if (_disposed || !_allowResume) return;

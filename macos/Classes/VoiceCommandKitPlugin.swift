@@ -211,8 +211,17 @@ public final class VoiceCommandKitPlugin: NSObject, FlutterPlugin, FlutterStream
     }
 
     public func stopListening(completion: @escaping (Result<Void, Error>) -> Void) {
+        guard isListening else {
+            completion(.success(()))
+            return
+        }
         stopListening()
-        completion(.success(()))
+        // CoreAudio HAL takes a brief moment on background queues to drain the IOUnit.
+        // Complete the asynchronous Flutter call after the drain window so `await stopListening()`
+        // in Dart guarantees hardware release before subsequent engine starts.
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.hardwareSettleInterval) {
+            completion(.success(()))
+        }
     }
 
     public func isListening(completion: @escaping (Result<Bool, Error>) -> Void) {

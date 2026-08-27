@@ -86,16 +86,9 @@ final class SttCommandRecognizer implements CommandRecognizer {
       }
 
       // Speech-to-text needs the microphone the wake-word engine is holding.
+      // Native stopListening() completes asynchronously once CoreAudio has fully
+      // drained and released the hardware IOUnit.
       await _context.listener.stop();
-
-      // On Apple platforms (macOS / iOS), CoreAudio HAL and AVAudioEngine
-      // tear down the AudioUnit asynchronously on background threads.
-      // Calling speech_to_text immediately races with AudioOutputUnitStop /
-      // IOUnitConfigurationChanged, causing AVAudioIONodeImpl::AUI() to crash with SIGSEGV.
-      // Wait a short settle window to let CoreAudio safely release the IOUnit.
-      if (Platform.isMacOS || Platform.isIOS) {
-        await Future<void>.delayed(const Duration(milliseconds: 300));
-      }
 
       _context.notifier.notify(VoiceFeedback.listening);
 

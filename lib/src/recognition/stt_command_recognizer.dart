@@ -94,46 +94,31 @@ final class SttCommandRecognizer implements CommandRecognizer {
 
       final initialized = await _initializeSpeech();
       if (!initialized) {
-        _context.logger.warn(
-          'SttCommandRecognizer: speech-to-text initialization failed, falling back to offline models',
-        );
-        // Fallback to offline command classifier models
-        await _offline.openSessionOrDispatch(detection);
+        _context.notifier.notify(VoiceFeedback.speechUnavailable);
+        await _context.resumeBackgroundListener();
         return;
       }
 
       _openSession();
 
-      try {
-        await _speech.listen(
+      unawaited(
+        _speech.listen(
           onResult: _onSpeechResult,
           localeId: localeId,
           listenFor: listenFor,
           pauseFor: pauseFor,
-        );
-        _context.logger.info('SttCommandRecognizer: speech session started');
-      } catch (e, st) {
-        _context.logger.error(
-          'SttCommandRecognizer: speech listen call failed, falling back to offline models',
-          error: e,
-          stackTrace: st,
-        );
-        _cancelTimers();
-        _sessionActive = false;
-        await _offline.openSessionOrDispatch(detection);
-      }
+        ),
+      );
+
+      _context.logger.info('SttCommandRecognizer: speech session started');
     } catch (error, stackTrace) {
       _context.logger.error(
-        'SttCommandRecognizer: failed to start speech session, falling back',
+        'SttCommandRecognizer: failed to start speech session',
         error: error,
         stackTrace: stackTrace,
       );
 
-      try {
-        await _offline.openSessionOrDispatch(detection);
-      } catch (_) {
-        await _context.resumeBackgroundListener();
-      }
+      await _context.resumeBackgroundListener();
     }
   }
 

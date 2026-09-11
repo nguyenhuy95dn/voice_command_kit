@@ -162,10 +162,9 @@ public final class VoiceCommandKitPlugin: NSObject, FlutterPlugin, FlutterStream
         // 1. Configure and activate the audio session FIRST to ensure input hardware resources are allocated.
         try audioSession.setCategory(
             .playAndRecord,
-            mode: .measurement,
-            options: [.mixWithOthers, .defaultToSpeaker, .allowBluetooth]
+            mode: .default,
+            options: [.mixWithOthers, .defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP]
         )
-        try audioSession.setPreferredSampleRate(Self.targetSampleRate)
         try audioSession.setActive(true, options: [])
 
         // 2. NOW recreate and setup the audio engine.

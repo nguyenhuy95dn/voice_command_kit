@@ -163,7 +163,7 @@ public final class VoiceCommandKitPlugin: NSObject, FlutterPlugin, FlutterStream
         try audioSession.setCategory(
             .playAndRecord,
             mode: .measurement,
-            options: [.duckOthers, .defaultToSpeaker, .allowBluetooth]
+            options: [.mixWithOthers, .defaultToSpeaker, .allowBluetooth]
         )
         try audioSession.setPreferredSampleRate(Self.targetSampleRate)
         try audioSession.setActive(true, options: [])
